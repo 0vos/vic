@@ -1,50 +1,42 @@
-"""2D 姿态估计（MediaPipe legacy solutions，Apache 2.0）。
+"""2D 姿态估计（RTMPose + onnxruntime，Apache 2.0）。
 
-为什么用 legacy `mp.solutions` 而非新版 Tasks API：
-新版 `PoseLandmarker` 在 macOS 上，即使设置 `delegate=CPU`，graph 里的
-`TensorsToDetectionsCalculator` 仍会强制初始化 Metal GPU（DrishtiMetalHelper），
-直接 abort（`Check failed: service_ Service is unavailable`），这是预编译 wheel 的死结。
-legacy `mp.solutions.pose` 走的是纯 CPU 的预编译 graph，绕开 Metal，稳定。
+为什么不用 MediaPipe：新版 Tasks 在 macOS 上强制初始化 Metal GPU 崩溃，
+legacy mp.solutions 又被新版移除。改用 RTMPose（OpenMMLab，Apache 2.0），
+onnxruntime 纯 CPU 推理，跨平台稳定，输出 COCO 17 关键点。
 
-关键点：legacy 与 Tasks 共用同一套 33 个 landmark，索引语义一致，
-因此 canonical.py 的 A-pose 布局无需改动。只用 2D 关键点，不涉及 3D 人体模板。
+rtmlib 封装了 RTMPose 的预处理（crop+resize+normalize）与 SimCC 解码，
+首次运行会自动下载模型（约 40MB）。
 """
 from __future__ import annotations
 
 import numpy as np
 
+_MODEL_URL = (
+    "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/"
+    "rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip"
+)
+
 
 class PoseEstimator:
-    def __init__(self, model_complexity: int = 1):
-        import mediapipe as mp
+    def __init__(self):
+        from rtmlib import RTMPose
 
-        if not hasattr(mp, "solutions") or not hasattr(mp.solutions, "pose"):
-            raise RuntimeError(
-                "当前 mediapipe 版本已移除 legacy mp.solutions.pose，"
-                "请改用 onnxruntime + RTMPose 方案（见 README 的 Phase 2 说明）"
-            )
-        self._pose = mp.solutions.pose.Pose(
-            static_image_mode=True,      # 逐帧独立检测（非视频流）
-            model_complexity=model_complexity,  # 0=lite, 1=full, 2=heavy
-            smooth_landmarks=False,
-            min_detection_confidence=0.4,
-            min_tracking_confidence=0.4,
+        self._pose = RTMPose(
+            onnx_model=_MODEL_URL,
+            backend="onnxruntime",
+            device="cpu",
         )
 
-    def detect(self, rgb: np.ndarray):
-        """输入 RGB 图 (H, W, 3) uint8，返回 (landmarks_xy (33,2) float32, visibility (33,) float32)。
+    def detect(self, bgr: np.ndarray, bbox):
+        """输入 BGR 图 (H, W, 3) + 人体 bbox (x1, y1, x2, y2)（xyxy 像素坐标）。
 
-        未检测到人时返回 None。
+        返回 (kp (17,2) float32, scores (17,) float32)。
         """
-        h, w = rgb.shape[:2]
-        rgb = np.ascontiguousarray(rgb)  # legacy API 要求连续内存、可写
-        results = self._pose.process(rgb)
-        if not results.pose_landmarks:
-            return None
-        lm = results.pose_landmarks.landmark
-        xy = np.array([[p.x * w, p.y * h] for p in lm], dtype=np.float32)
-        vis = np.array([p.visibility for p in lm], dtype=np.float32)
-        return xy, vis
-
-    def close(self) -> None:
-        self._pose.close()
+        # rtmlib 的 RTMPose.__call__(image, bboxes=[...])，bboxes 是 list
+        keypoints, scores = self._pose(bgr, bboxes=[list(bbox)])
+        keypoints = np.asarray(keypoints, dtype=np.float32)
+        scores = np.asarray(scores, dtype=np.float32)
+        if keypoints.ndim == 3:  # (1, 17, 2) -> (17, 2)
+            keypoints = keypoints[0]
+            scores = scores[0]
+        return keypoints, scores

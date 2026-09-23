@@ -104,13 +104,15 @@ def main() -> None:
 
         clean = segment.apply_mask(frame, mask)
 
-        # pose（用原始帧检测更稳，背景信息有助于定位；warp 时才用白底 clean 图）
-        rgb = frame[..., ::-1]
-        det = pose_est.detect(rgb)
-        if det is None:
-            print(f"[frame {fi}] 未检测到人，跳过")
+        # 人体 bbox（从分割 mask 得到）
+        ys, xs = np.where(mask > 0)
+        bbox = (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
+
+        # pose（用原始帧 BGR + 人体 bbox 检测）
+        lm, vis = pose_est.detect(frame, bbox)
+        if float(np.mean(vis)) < 0.3:
+            print(f"[frame {fi}] pose 置信度过低，跳过")
             continue
-        lm, vis = det
 
         src_sub = lm[canonical.WARP_LANDMARK_IDS]
         src_boundary = warp._boundary_points(w, h)

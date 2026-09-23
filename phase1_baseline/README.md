@@ -12,7 +12,7 @@
 
 ## 位置对应是怎么做的
 
-1. 用 MediaPipe 得到 33 个 2D 关键点（肩膀/肘/腕/髋/膝/踝…）。
+1. 用 RTMPose（rtmlib，onnxruntime 纯 CPU）得到 COCO 17 个 2D 关键点（鼻子/双耳/双肩/双肘/双腕/双髋/双膝/双踝）。
 2. 在 canonical A-pose 布局（`vic/canonical.py` 里**自己定义**的 2D 坐标）上做 Delaunay 三角剖分。
 3. 每一帧，把「当前帧关键点构成的三角形」用仿射变换 warp 到「canonical 对应三角形」—— 这相当于把每帧每个身体部位的像素「搬」到 canonical 图上的正确位置。
 4. 多帧 warp 结果聚合，记录来源（source map）和覆盖次数（coverage map）。
@@ -29,7 +29,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-首次运行会自动下载 MediaPipe 模型（约 5MB）和 rembg 模型（约 170MB）。
+首次运行会自动下载 RTMPose 模型（约 40MB）和 rembg 模型（约 170MB）。
 
 ## 运行
 

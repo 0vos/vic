@@ -64,3 +64,32 @@ python run.py path/to/video.mp4 --frames 24 --out output
 - 多视角 canonical（front/back/left/right）
 - 引入 visibility/confidence 的 soft 权重
 - 喂给 Trellis 2 / Rodin，验证「聚合后的 canonical observation 是否优于随机帧」
+
+## License 清单（商用合规）
+
+| 组件 | License | 商用 |
+|---|---|---|
+| rtmlib / RTMPose 代码 | Apache 2.0 | ✅ |
+| onnxruntime | MIT | ✅ |
+| OpenCV | Apache 2.0 | ✅ |
+| rembg 代码 | MIT | ✅ |
+| numpy / scipy | BSD | ✅ |
+| Pillow | HPND（宽松） | ✅ |
+| U²-Net 权重（rembg 抠图） | Apache 2.0 | ✅ |
+| RTMPose body7 权重 | ⚠️ 含 MPII（非商用数据集） | ⚠️ 见下 |
+
+### 关于 RTMPose body7 权重的说明
+
+当前用的 `rtmpose-m_simcc-body7_pt-body7` 是用 7 个数据集训练的，**其中包含 MPII**。
+MPII 官方 license 明确「Commercial use is not allowed」（因图片版权不在作者手里）。
+
+MMPose 官方（issue #2106）立场是「据我们所知预训练模型可商用（COCO 与 MMPose 均允许商用）」，
+但 body7 混合了 MPII 后存在灰色地带，**严格商用审查可能不过**。
+
+商用前的两条干净路径（按成本从低到高）：
+1. **导出 COCO-only 权重**：MMPose 有纯 COCO 训练的 RTMPose（论文 75.8% AP），
+   用 mmdeploy 从 .pth 导出 ONNX 后替换（COCO 是 CC BY 4.0，可商用需署名）。
+2. **自训练**：用自采数据（iPhone 16 Pro + LiDAR）+ 自标注训练自己的 pose 模型，
+   权重完全自有，零 license 负担（Phase 2/3 计划内）。
+
+**不可商用（红线，本项目已避开）**：SMPL/SMPL-X/MANO、DensePose、OpenPose，以及任何含 MPII 的模型权重。

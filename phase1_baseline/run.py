@@ -20,11 +20,32 @@ import config
 from vic import canonical, pose, segment, visualize, warp
 
 
-def extract_frames(video_path: str, num_frames: int) -> list[np.ndarray]:
-    """均匀抽 num_frames 帧。"""
+def _downscale(frame: np.ndarray, max_size: int) -> np.ndarray:
+    """若最长边超过 max_size，等比缩小（用 INTER_AREA，适合缩小）。"""
+    h, w = frame.shape[:2]
+    if max(h, w) > max_size:
+        scale = max_size / max(h, w)
+        frame = cv2.resize(frame, (int(w * scale), int(h * scale)),
+                           interpolation=cv2.INTER_AREA)
+    return frame
+
+
+def extract_frames(video_path: str, num_frames: int,
+                   max_size: int | None = None) -> list[np.ndarray]:
+    """均匀抽 num_frames 帧。max_size 非空时先等比缩小到最长边 max_size。"""
+    import os
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(
+            f"视频文件不存在: {video_path}\n"
+            f"当前目录: {os.getcwd()}\n"
+            f"当前目录下的文件: {sorted(os.listdir('.'))}"
+        )
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        raise RuntimeError(f"无法打开视频: {video_path}")
+        raise RuntimeError(
+            f"无法打开视频: {video_path}\n"
+            f"（文件存在但 OpenCV 无法解码，可能是编码/容器格式问题，试试 ffmpeg 转码）"
+        )
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total <= 0:
         raise RuntimeError("视频没有帧")
@@ -34,9 +55,12 @@ def extract_frames(video_path: str, num_frames: int) -> list[np.ndarray]:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ok, frame = cap.read()
         if ok:
+            if max_size:
+                frame = _downscale(frame, max_size)
             frames.append(frame)
     cap.release()
-    print(f"[extract] 共抽取 {len(frames)}/{num_frames} 帧")
+    print(f"[extract] 共抽取 {len(frames)}/{num_frames} 帧"
+          + (f"，已下采样到最长边 {max_size}" if max_size else ""))
     return frames
 
 
@@ -45,6 +69,8 @@ def main() -> None:
     parser.add_argument("video", help="输入视频路径")
     parser.add_argument("--frames", type=int, default=config.NUM_FRAMES, help="抽取帧数")
     parser.add_argument("--out", default=str(config.OUTPUT_DIR), help="输出目录")
+    parser.add_argument("--max-size", type=int, default=1024,
+                        help="最长边下采样到多少像素（0=不缩放，4K 视频建议 1024）")
     args = parser.parse_args()
 
     out_dir = Path(args.out)
@@ -54,7 +80,7 @@ def main() -> None:
         inter_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. 抽帧
-    frames = extract_frames(args.video, args.frames)
+    frames = extract_frames(args.video, args.frames, args.max_size or None)
     if not frames:
         sys.exit("没有可用帧")
 

@@ -33,7 +33,13 @@ class PoseEstimator:
 
         self._mp = mp
         model_path = _ensure_model(Path(model_dir))
-        base = python.BaseOptions(model_asset_path=str(model_path))
+        # 强制 CPU delegate：Mac 上 MediaPipe 的 Metal GPU delegate 在部分环境
+        # （尤其 anaconda）里会初始化失败直接 abort（DrishtiMetalHelper service 不可用）。
+        # 2D pose 推理很快，CPU 完全够用。
+        base = python.BaseOptions(
+            model_asset_path=str(model_path),
+            delegate=python.BaseOptions.Delegate.CPU,
+        )
         opts = vision.PoseLandmarkerOptions(
             base_options=base,
             running_mode=vision.RunningMode.IMAGE,

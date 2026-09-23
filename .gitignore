@@ -1,0 +1,13 @@
+# 中间产物与输出
+__pycache__/
+*.pyc
+output/
+*.mp4
+*.mov
+!sample*.mp4
+.DS_Store
+.venv/
+venv/
+
+# MediaPipe 模型文件（运行时自动下载）
+*.task
